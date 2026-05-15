@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend VC</title>
+
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="icon" href="/static/logo.png" type="image/png" />
+</head>
+
+<body class="peserta-page">
+  <!-- HEADER -->
+  <div class="header-peserta">
+    <h2>Halo, {{ nama }} !!</h2>
+    <a href="/logout" class="logout-btn">
+      <i class="fa fa-sign-out-alt"></i> Logout
+    </a>
+  </div>
+
+  <div class="container-peserta">
+    <!-- INFO -->
+    <div class="info-peserta">
+      <h3><i class="fa fa-video"></i> FaceAttend VC</h3>
+      <p>Silakan ikuti kelas dan absensi akan dilakukan otomatis.</p>
+    </div>
+
+    <!-- VIDEO JITSI -->
+    <div class="video-card">
+      <div id="meet"></div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status-card">
+      <div class="status-header">
+        <i class="fa fa-user-check"></i>
+        <h3>Status Absensi</h3>
+      </div>
+
+      <div class="status-content">
+        <div class="status-row">
+          <i class="fa fa-user"></i>
+          <span>Nama</span>
+          <strong id="nama_status">-</strong>
+        </div>
+
+        <div class="status-row">
+          <i class="fa fa-eye"></i>
+          <span>Liveness</span>
+          <strong id="liveness_status">-</strong>
+        </div>
+
+      </div>
+
+      <!-- AREA BADGE STATUS (Dihasilkan via JS) -->
+      <div id="badge_status"></div>
+    </div>
+
+    <!-- KAMERA (HIDDEN UNTUK SCAN) -->
+    <video id="video" autoplay style="display: none"></video>
+    <canvas id="canvas" style="display: none"></canvas>
+  </div>
+
+  <!-- JITSI -->
+  <script src="https://meet.jit.si/external_api.js"></script>
+
+  <script>
+    const domain = "meet.jit.si";
+
+    const options = {
+      roomName: "FaceAttend VC",
+      width: "100%",
+      height: 500,
+      parentNode: document.querySelector("#meet"),
+
+      userInfo: {
+        displayName: "{{ nama }}",
+      },
+    };
+
+    const api = new JitsiMeetExternalAPI(domain, options);
+
+    // FUNGSI UNTUK MENGIRIM REKAP ABSENSI AKHIR
+    function kirimRekapAbsensi() {
+      if (!sudahDikenali) return;
+
+      // Tentukan hasil akhir berdasarkan akumulasi scanning
+      // Jika terdapat deteksi Fake yang signifikan, tandai sebagai Spoof
+      let finalStatus = (fakeCount > realCount) ? "tidak_hadir" : "hadir";
+      let finalKet = (fakeCount > 0) ? `Detected Spoof (${fakeCount} times)` : "Verified Live (All Real)";
+
+      let formData = new URLSearchParams();
+      formData.append("status", finalStatus);
+      formData.append("keterangan", finalKet);
+
+      // Gunakan Beacon agar data tetap terkirim meski tab ditutup paksa
+      navigator.sendBeacon("/keluar", formData);
+    }
+
+    // KIRIM REKAP SAAT JITSI DITUTUP
+    api.addEventListener("videoConferenceLeft", () => {
+      kirimRekapAbsensi();
+    });
+
+    // BACKUP: KIRIM SAAT TAB/BROWSER DITUTUP
+    window.addEventListener("beforeunload", () => {
+      kirimRekapAbsensi();
+    });
+  </script>
+
+  <!-- AUTO FACE RECOGNITION -->
+  <script>
+    const video = document.getElementById("video");
+
+    // AKTIFKAN KAMERA (UNTUK SCAN)
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      video.srcObject = stream;
+    });
+
+    // ================= AUTO SCAN =================
+    setInterval(() => {
+      capture();
+    }, 5000); // tiap 5 detik
+
+    let sudahDikenali = false;
+    let realCount = 0;
+    let fakeCount = 0;
+    let totalScans = 0;
+
+    function capture() {
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = 320;
+      canvas.height = 320;
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(
+        (blob) => {
+          let formData = new FormData();
+          formData.append("image", blob);
+
+          fetch("/recognize", {
+            method: "POST",
+            body: formData,
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              console.log(data);
+
+              // ================= UPDATE UI =================
+              document.getElementById("nama_status").innerText = data.nama;
+              document.getElementById("liveness_status").innerText =
+                data.liveness;
+              document.getElementById("confidence_status").innerText =
+                data.confidence.toFixed(2);
+
+              let badge = document.getElementById("badge_status");
+
+              badge.className = "badge-status";
+
+              // ================= LOGIKA STATUS =================
+              if (data.nama === "Unknown") {
+                badge.innerHTML = "❌ Wajah Tidak Dikenali";
+                badge.classList.add("danger");
+              } else if (data.liveness === "Fake") {
+                badge.innerHTML = "⚠️ Wajah Palsu Terdeteksi";
+                badge.classList.add("warning");
+              }
+
+              // MONITORING  VC 
+              // Cek apakah ini benar peserta yang login
+              if (data.nama === "{{ nama }}") {
+                if (!sudahDikenali) {
+                  console.log("Peserta terverifikasi, mulai monitoring liveness...");
+                  sudahDikenali = true;
+                  // Catat waktu masuk awal ke server (opsional, jika ingin log masuk)
+                  fetch("/absen", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: "status=hadir&keterangan=Monitoring Started"
+                  });
+                }
+
+                // Akumulasi hasil liveness selama Jitsi berlangsung
+                totalScans++;
+                if (data.liveness === "Real") {
+                  realCount++;
+                } else {
+                  fakeCount++;
+                }
+
+                console.log(`Monitoring: Real(${realCount}) | Fake(${fakeCount})`);
+              }
+            })
+            .catch((err) => console.error("ERROR:", err));
+        },
+        "image/jpeg",
+        1.0, // 🔥 kualitas max
+      );
+    }
+  </script>
+</body>
+
+</html>

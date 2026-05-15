@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaceAttend VC</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+    <link rel="icon" href="/static/logo.png" type="image/png" />
+  </head>
+  <body class="admin-page">
+    <div class="layout">
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <!-- HEADER -->
+        <div class="sidebar-header">
+          <img src="/static/logo.png" class="logo-sidebar" alt="Logo" />
+          <span class="brand-name">FaceAttend VC</span>
+        </div>
+
+        <!-- MENU -->
+        <ul class="menu">
+          <li class="{{ 'active' if request.path == '/admin' else '' }}">
+            <a href="/admin">
+              <i class="fa fa-home"></i>
+              <span>Dashboard</span>
+            </a>
+          </li>
+
+          <li class="{{ 'active' if request.path == '/data-peserta' else '' }}">
+            <a href="/data-peserta">
+              <i class="fa fa-users"></i>
+              <span>Data Peserta</span>
+            </a>
+          </li>
+
+          <li class="{{ 'active' if request.path == '/data-absensi' else '' }}">
+            <a href="/data-absensi">
+              <i class="fa fa-calendar-check"></i>
+              <span>Data Absensi</span>
+            </a>
+          </li>
+        </ul>
+
+        <!-- PAGES / FOOTER -->
+        <div class="sidebar-footer">
+          <p class="menu-title">PAGES</p>
+          <a href="/logout" class="logout-link">
+            <i class="fa fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </a>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <main class="main">
+        <!-- HEADER -->
+        <header class="header">
+          <div class="header-icons">
+            <i class="fa fa-sync-alt" title="Refresh Data" onclick="location.reload()"></i>
+          </div>
+
+          <!-- PROFILE -->
+          <div class="profile-dropdown">
+            <i class="fa fa-user"></i>
+            <div class="dropdown-menu">
+              <p><strong>{{ session['nama'] }}</strong></p>
+              <p>Administrator</p>
+              <hr />
+              <p style="font-size: 11px; color: #718096;"><i class="fa fa-circle" style="color: #48bb78; font-size: 8px;"></i> Sesi Aktif</p>
+            </div>
+          </div>
+        </header>
+
+        <!-- CONTENT -->
+        <div class="content">
+          
+          <!-- DASHBOARD TOP GRID (Video + Stats) -->
+          <div class="dashboard-grid">
+            
+            <!-- VIDEO SECTION -->
+            <div class="video-section">
+              <div class="video-card">
+                <div id="meet"></div>
+              </div>
+            </div>
+
+            <!-- STATS SECTION (Vertical) -->
+            <div class="stats-section">
+              <div class="stat-card stat-total">
+                <i class="fa fa-users"></i>
+                <div>
+                  <h4>Total Mahasiswa</h4>
+                  <p>{{ total_mahasiswa | default(0) }}</p>
+                </div>
+              </div>
+
+              <div class="stat-card stat-hadir">
+                <i class="fa fa-check-circle"></i>
+                <div>
+                  <h4>Hadir</h4>
+                  <p>{{ hadir_count | default(0) }}</p>
+                </div>
+              </div>
+
+              <div class="stat-card stat-spoof">
+                <i class="fa fa-times-circle"></i>
+                <div>
+                  <h4>Spoof</h4>
+                  <p>{{ spoof_count | default(0) }}</p>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /dashboard-grid -->
+
+          <!-- CHART SECTION -->
+          <div class="chart-card">
+            <h3>Grafik Absensi</h3>
+            <div class="chart-container">
+              <canvas id="chartAbsensi"></canvas>
+            </div>
+          </div>
+
+        </div><!-- /content -->
+      </main>
+    </div><!-- /layout -->
+
+    <!-- JITSI & CHART SCRIPTS -->
+    <script src="https://meet.jit.si/external_api.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+      // JITSI CONFIG
+      const domain = "meet.jit.si";
+      const options = {
+        roomName: "FaceAttend VC",
+        width: "100%",
+        height: 480,
+        parentNode: document.querySelector("#meet"),
+        userInfo: {
+          displayName: "{{ session['nama'] }}",
+        },
+      };
+      const api = new JitsiMeetExternalAPI(domain, options);
+
+      // CHART CONFIG
+      const hadir = {{ hadir_count | default(0) }};
+      const spoof = {{ spoof_count | default(0) }};
+
+      const ctx = document.getElementById('chartAbsensi');
+      if (ctx) {
+          new Chart(ctx, {
+              type: 'doughnut',
+              data: {
+                  labels: ['Live', 'Spoof'],
+                  datasets: [{
+                      data: [hadir, spoof],
+                      backgroundColor: ['#48bb78', '#e53e3e'],
+                      borderWidth: 0,
+                      hoverOffset: 10
+                  }]
+              },
+              options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                      legend: {
+                          position: 'bottom',
+                          labels: {
+                              padding: 20,
+                              color: '#ffffff',
+                              font: {
+                                  size: 14,
+                                  weight: '600'
+                              }
+                          }
+                      }
+                  }
+              }
+          });
+      }
+    </script>
+  </body>
+</html>

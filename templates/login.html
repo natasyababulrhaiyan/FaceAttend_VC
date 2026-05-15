@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaceAttend VC</title>
+    <meta name="description" content="Login ke FaceAttend VC — Sistem Absensi Wajah dengan Liveness Detection" />
+
+    <!-- Font Awesome (ikon) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Stylesheet utama (login styles ada di bagian atas file ini) -->
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="icon" href="/static/logo.png" type="image/png" />
+  </head>
+
+  <!-- class "login-body" mengaktifkan background gradient + blob animasi -->
+  <body class="login-body">
+
+    <!-- Overlay titik-titik dekoratif (lihat style .bg-dots di style.css) -->
+    <div class="bg-dots"></div>
+
+    <!-- Card utama login -->
+    <div class="login-card">
+
+      <!-- Logo -->
+      <div class="logo-wrapper">
+        <img src="/static/logo.png" alt="FaceAttend VC Logo" />
+      </div>
+
+      <!-- Judul dengan gradient warna -->
+      <h1 class="brand-title">FaceAttend VC</h1>
+
+      <!-- Garis pemisah -->
+      <div class="login-divider"></div>
+
+      <!-- Form login -->
+      <form method="POST">
+
+        <!-- Pesan error dari Flask (flash message) -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash-error">
+                <i class="fa fa-circle-exclamation"></i> {{ message }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- Input NIM -->
+        <div class="login-input-group">
+          <i class="fa fa-id-card icon-left"></i>
+          <input
+            type="text"
+            id="nim"
+            name="nim"
+            placeholder="Masukkan NIM"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <!-- Input Password -->
+        <div class="login-input-group">
+          <i class="fa fa-lock icon-left"></i>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Masukkan Password"
+            autocomplete="current-password"
+            required
+          />
+          <!-- Ikon mata untuk show/hide password -->
+          <i class="fa fa-eye login-toggle" id="toggleIcon" onclick="togglePassword()"></i>
+        </div>
+
+        <!-- Tombol submit -->
+        <button type="submit" class="btn-login" id="loginBtn">
+          <i class="fa fa-right-to-bracket"></i>&nbsp; Login
+        </button>
+
+      </form>
+
+    </div><!-- /login-card -->
+
+    <script>
+      // Fungsi toggle show/hide password
+      function togglePassword() {
+        const pass = document.getElementById("password");
+        const icon = document.getElementById("toggleIcon");
+        if (pass.type === "password") {
+          pass.type = "text";
+          icon.classList.replace("fa-eye", "fa-eye-slash");
+        } else {
+          pass.type = "password";
+          icon.classList.replace("fa-eye-slash", "fa-eye");
+        }
+      }
+    </script>
+
+  </body>
+</html>

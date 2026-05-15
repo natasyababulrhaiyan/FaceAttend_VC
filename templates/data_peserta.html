@@ -1,0 +1,171 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Data Peserta - FaceAttend VC</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+    <link rel="icon" href="/static/logo.png" type="image/png" />
+  </head>
+  <body class="admin-page">
+    <div class="layout">
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <img src="/static/logo.png" class="logo-sidebar" alt="Logo" />
+          <span class="brand-name">FaceAttend VC</span>
+        </div>
+
+        <ul class="menu">
+          <li>
+            <a href="/admin">
+              <i class="fa fa-home"></i>
+              <span>Dashboard</span>
+            </a>
+          </li>
+          <li class="active">
+            <a href="/data-peserta">
+              <i class="fa fa-users"></i>
+              <span>Data Peserta</span>
+            </a>
+          </li>
+          <li>
+            <a href="/data-absensi">
+              <i class="fa fa-calendar-check"></i>
+              <span>Data Absensi</span>
+            </a>
+          </li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <p class="menu-title">PAGES</p>
+          <a href="/logout" class="logout-link">
+            <i class="fa fa-sign-out-alt"></i>
+            <span>Logout</span>
+          </a>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <main class="main">
+        <!-- HEADER -->
+        <header class="header">
+          <div class="header-icons">
+            <i class="fa fa-sync-alt" title="Refresh Data" onclick="location.reload()"></i>
+          </div>
+          <div class="profile-dropdown">
+            <i class="fa fa-user"></i>
+            <div class="dropdown-menu">
+              <p><strong>{{ session['nama'] }}</strong></p>
+              <p>Administrator</p>
+              <hr />
+              <p style="font-size: 11px; color: #718096;"><i class="fa fa-circle" style="color: #48bb78; font-size: 8px;"></i> Sesi Aktif</p>
+            </div>
+          </div>
+        </header>
+
+        <div class="content">
+          <!-- TAMBAH PESERTA -->
+          <div class="card">
+            <h3><i class="fa fa-user-plus"></i> Tambah Peserta</h3>
+            <form action="/tambah-peserta" method="POST" class="form-tambah">
+              <input type="text" name="nim" placeholder="NIM" required />
+              <input type="text" name="nama" placeholder="Nama" required />
+              <input type="password" name="password" placeholder="Password" required />
+              <button type="submit" class="btn-submit"><i class="fa fa-plus"></i> Tambah</button>
+            </form>
+          </div>
+
+          <!-- TABEL -->
+          <div class="card">
+            <h3><i class="fa fa-list"></i> Daftar Peserta</h3>
+            <div style="overflow-x: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>NIM</th>
+                    <th>Nama</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for d in data %}
+                  <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ d.nim }}</td>
+                    <td>{{ d.nama }}</td>
+                    <td>
+                      <!-- Tombol Edit memanggil fungsi JS -->
+                      <button class="btn-icon edit" onclick="openEditModal('{{ d.nim }}', '{{ d.nama }}')">
+                        <i class="fa fa-pen"></i>
+                      </button>
+                      <a href="/hapus-peserta/{{ d.nim }}" class="btn-icon delete" onclick="return confirm('Yakin hapus data ini?');">
+                        <i class="fa fa-trash"></i>
+                      </a>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+    <!-- MODAL EDIT PESERTA -->
+    <div id="editModal" class="modal">
+      <div class="modal-content card">
+        <div class="modal-header">
+          <h3><i class="fa fa-user-edit"></i> Edit Data Peserta</h3>
+          <span class="close-modal" onclick="closeEditModal()">&times;</span>
+        </div>
+        <form id="editForm" method="POST">
+          <div class="form-group">
+            <label>NIM (Tidak dapat diubah)</label>
+            <input type="text" id="edit_nim" disabled style="background: rgba(0,0,0,0.05); cursor: not-allowed;" />
+          </div>
+          <div class="form-group">
+            <label>Nama Lengkap</label>
+            <input type="text" name="nama" id="edit_nama" required />
+          </div>
+          <div class="form-group">
+            <label>Password Baru</label>
+            <input type="password" name="password" id="edit_password" placeholder="Kosongkan jika tidak ingin ganti" required />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn-modal-cancel" onclick="closeEditModal()">Batal</button>
+            <button type="submit" class="btn-modal-save"><i class="fa fa-save"></i> Simpan Perubahan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      function openEditModal(nim, nama) {
+        const modal = document.getElementById('editModal');
+        const form = document.getElementById('editForm');
+        
+        document.getElementById('edit_nim').value = nim;
+        document.getElementById('edit_nama').value = nama;
+        
+        // Set action URL secara dinamis
+        form.action = '/edit-peserta/' + nim;
+        
+        modal.style.display = 'flex';
+      }
+
+      function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+      }
+
+      // Menutup modal jika area di luar modal diklik
+      window.onclick = function(event) {
+        const modal = document.getElementById('editModal');
+        if (event.target == modal) {
+          modal.style.display = 'none';
+        }
+      }
+    </script>
+  </body>
+</html>
