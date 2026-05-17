@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+
+# Folder data / training / artefak ML (besar, tidak perlu di repo)
+Dataset/
+training/
+model/
+
+# Bobot & artefak model (binary)
+*.keras
+*.h5
+*.pickle
+*.pkl
+
+# Database dump lokal (opsional: hapus baris ini jika ingin track skema)
+db_absensi.sql
+
+# Jupyter checkpoints
+.ipynb_checkpoints/

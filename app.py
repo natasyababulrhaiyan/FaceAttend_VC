@@ -1,15 +1,56 @@
-from flask import Flask, render_template, request, redirect, session, jsonify, flash
+from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for
 import mysql.connector
 from mysql.connector import pooling
 import cv2
 import numpy as np
 import json
+import logging
+from functools import wraps
 from tensorflow.keras.models import load_model
 import pickle
 from mtcnn import MTCNN
 
 app = Flask(__name__)
 app.secret_key = "secret123"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("faceattend")
+
+
+def handle_errors(response_type: str = "html"):
+    """
+    Tangkap exception di view, log traceback, kembalikan respons aman ke klien.
+    response_type: 'json' | 'plain' | 'html'
+    """
+
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped(*args, **kwargs):
+            try:
+                return view_func(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Error in view %r — %s %s",
+                    view_func.__name__,
+                    request.method,
+                    request.path,
+                )
+                if response_type == "json":
+                    return jsonify({
+                        "error": "internal_error",
+                        "message": "Terjadi kesalahan di server.",
+                    }), 500
+                if response_type == "plain":
+                    return "Internal Server Error", 500
+                flash("Terjadi kesalahan server.", "danger")
+                return redirect(request.referrer or url_for("login"))
+
+        return wrapped
+
+    return decorator
 
 # Konfigurasi Database Pool (Maksimal 20 koneksi simultan)
 db_pool = pooling.MySQLConnectionPool(
@@ -23,12 +64,12 @@ db_pool = pooling.MySQLConnectionPool(
 )
 
 def get_db():
-    "Mengambil koneksi database dari pool"""
+    """Mengambil koneksi database dari pool."""
     return db_pool.get_connection()
 
 # ================= LOAD MODEL =================
 
-print("[INFO] Memuat model face recognition...")
+logger.info("Memuat model face recognition...")
 
 face_model = None
 le = None
@@ -52,11 +93,11 @@ try:
     # load MTCNN detector
     detector = MTCNN()
 
-    print("[INFO] Model berhasil dimuat.")
+    logger.info("Model berhasil dimuat.")
 
 except Exception as e:
 
-    print(f"[ERROR] Gagal memuat model: {e}")
+    logger.error("Gagal memuat model: %s", e, exc_info=True)
 
     face_model = None
     le = None
@@ -65,7 +106,7 @@ except Exception as e:
 # ================= FACE RECOGNITION =================
 
 @app.route('/recognize', methods=['POST'])
-
+@handle_errors("json")
 def recognize():
 
     if face_model is None or le is None or detector is None:
@@ -207,6 +248,7 @@ def recognize():
 
 # Route Login
 @app.route('/', methods=['GET', 'POST'])
+@handle_errors("html")
 def login():
     if request.method == 'POST':
         nim = request.form['nim']
@@ -232,6 +274,7 @@ def login():
 
 # Halaman Dashboard Admin
 @app.route('/admin')
+@handle_errors("html")
 def admin():
     if 'role' not in session or session['role'] != 'admin':
         return "Akses ditolak!"
@@ -255,6 +298,7 @@ def admin():
 
 # Halaman Manajemen Peserta
 @app.route('/data-peserta')
+@handle_errors("html")
 def data_peserta():
     if 'role' not in session or session['role'] != 'admin':
         return "Akses ditolak!"
@@ -270,6 +314,7 @@ def data_peserta():
 
 # Halaman Peserta & Video Conference
 @app.route('/peserta')
+@handle_errors("html")
 def peserta():
     if 'role' not in session or session['role'] != 'peserta':
         return "Akses ditolak!"
@@ -277,6 +322,7 @@ def peserta():
 
 # Catat Absen Masuk
 @app.route('/absen', methods=['POST'])
+@handle_errors("plain")
 def absen():
     if 'role' not in session or session['role'] != 'peserta':
         return "Akses ditolak!"
@@ -294,6 +340,7 @@ def absen():
 
 # Rekap Data Absensi
 @app.route('/data-absensi', methods=['GET', 'POST'])
+@handle_errors("html")
 def data_absensi():
     if 'role' not in session or session['role'] != 'admin':
         return "Akses ditolak!"
@@ -313,6 +360,7 @@ def data_absensi():
 
 # Kelola Peserta (Tambah/Edit/Hapus)
 @app.route('/tambah-peserta', methods=['POST'])
+@handle_errors("html")
 def tambah_peserta():
     conn = get_db()
     cursor = conn.cursor()
@@ -326,6 +374,7 @@ def tambah_peserta():
     return redirect('/data-peserta')
 
 @app.route('/edit-peserta/<nim>', methods=['POST'])
+@handle_errors("html")
 def edit_peserta(nim):
     conn = get_db()
     cursor = conn.cursor()
@@ -339,6 +388,7 @@ def edit_peserta(nim):
     return redirect('/data-peserta')
 
 @app.route('/hapus-peserta/<nim>')
+@handle_errors("html")
 def hapus_peserta(nim):
     conn = get_db()
     cursor = conn.cursor()
@@ -351,6 +401,7 @@ def hapus_peserta(nim):
 
 # Catat Waktu Keluar
 @app.route('/keluar', methods=['POST'])
+@handle_errors("plain")
 def keluar():
     nim = session.get('nim')
     if not nim: return "NIM tidak ditemukan"
@@ -371,6 +422,7 @@ def keluar():
     return "OK"
 
 @app.route('/logout')
+@handle_errors("html")
 def logout():
     session.clear()
     return redirect('/')
