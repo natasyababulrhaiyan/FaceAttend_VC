@@ -79,12 +79,12 @@ try:
 
     # load CNN model
     face_model = load_model(
-        'model-cnn-facerecognition.h5'
+        'best_model.keras'
     )
 
     # load label encoder
     with open(
-        'model/label_encoder_cnn.pickle',
+        'label_encoder_cnn_new.pickle',
         'rb'
     ) as f:
 
