@@ -30,6 +30,10 @@ def get_db():
 
 print("[INFO] Memuat model face recognition...")
 
+face_model = None
+le = None
+detector = None
+
 try:
 
     # load CNN model
@@ -55,6 +59,8 @@ except Exception as e:
     print(f"[ERROR] Gagal memuat model: {e}")
 
     face_model = None
+    le = None
+    detector = None
 
 # ================= FACE RECOGNITION =================
 
@@ -62,16 +68,36 @@ except Exception as e:
 
 def recognize():
 
-    if 'image' not in request.files or face_model is None:
+    if face_model is None or le is None or detector is None:
 
         return jsonify({
-            "error": "Model/Image Error"
+            "error": "model_unavailable",
+            "message": (
+                "Model pengenalan wajah tidak dapat dimuat. "
+                "Pastikan file model-cnn-facerecognition.h5 dan "
+                "model/label_encoder_cnn.pickle ada, lalu restart server."
+            ),
+        }), 503
+
+    if 'image' not in request.files:
+
+        return jsonify({
+            "error": "missing_image",
+            "message": "Permintaan tidak menyertakan field gambar (image).",
         }), 400
 
     file = request.files['image']
+    raw = file.read()
+
+    if not raw:
+
+        return jsonify({
+            "error": "empty_image",
+            "message": "Gambar kosong — kamera mungkin belum siap.",
+        }), 400
 
     nparr = np.frombuffer(
-        file.read(),
+        raw,
         np.uint8
     )
 
@@ -79,6 +105,14 @@ def recognize():
         nparr,
         cv2.IMREAD_COLOR
     )
+
+    if img is None:
+
+        return jsonify({
+            "nama": "Invalid Image",
+            "liveness": "Unknown",
+            "confidence": 0
+        })
 
     # BGR -> RGB
     rgb = cv2.cvtColor(

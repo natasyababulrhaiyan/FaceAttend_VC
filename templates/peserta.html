@@ -52,6 +52,12 @@
           <strong id="liveness_status">-</strong>
         </div>
 
+        <div class="status-row">
+          <i class="fa fa-percent"></i>
+          <span>Confidence</span>
+          <strong id="confidence_status">-</strong>
+        </div>
+
       </div>
 
       <!-- AREA BADGE STATUS (Dihasilkan via JS) -->
@@ -59,7 +65,7 @@
     </div>
 
     <!-- KAMERA (HIDDEN UNTUK SCAN) -->
-    <video id="video" autoplay style="display: none"></video>
+    <video id="video" autoplay playsinline muted style="display: none"></video>
     <canvas id="canvas" style="display: none"></canvas>
   </div>
 
@@ -117,6 +123,11 @@
     // AKTIFKAN KAMERA (UNTUK SCAN)
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
       video.srcObject = stream;
+    }).catch((err) => {
+      console.error(err);
+      const badge = document.getElementById("badge_status");
+      badge.className = "badge-status danger";
+      badge.innerHTML = "Tidak dapat mengakses kamera. Izinkan kamera di browser.";
     });
 
     // ================= AUTO SCAN =================
@@ -130,6 +141,10 @@
     let totalScans = 0;
 
     function capture() {
+      if (!video.srcObject || video.readyState < 2 || !video.videoWidth) {
+        return;
+      }
+
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
 
@@ -140,23 +155,50 @@
 
       canvas.toBlob(
         (blob) => {
+          if (!blob || blob.size === 0) {
+            return;
+          }
+
           let formData = new FormData();
-          formData.append("image", blob);
+          formData.append("image", blob, "frame.jpg");
 
           fetch("/recognize", {
             method: "POST",
             body: formData,
           })
-            .then((res) => res.json())
-            .then((data) => {
+            .then(async (res) => {
+              const data = await res.json();
+
+              if (!res.ok) {
+                const msg =
+                  data.message ||
+                  data.error ||
+                  "Gagal memproses pengenalan wajah.";
+                console.warn("/recognize", res.status, data);
+                document.getElementById("nama_status").innerText = "—";
+                document.getElementById("liveness_status").innerText = "—";
+                document.getElementById("confidence_status").innerText = "—";
+
+                const badge = document.getElementById("badge_status");
+                badge.className = "badge-status danger";
+                badge.innerHTML = "⚠️ " + msg;
+                return;
+              }
+
               console.log(data);
 
+              const conf =
+                typeof data.confidence === "number"
+                  ? data.confidence
+                  : Number(data.confidence) || 0;
+
               // ================= UPDATE UI =================
-              document.getElementById("nama_status").innerText = data.nama;
+              document.getElementById("nama_status").innerText =
+                data.nama ?? "—";
               document.getElementById("liveness_status").innerText =
-                data.liveness;
+                data.liveness ?? "—";
               document.getElementById("confidence_status").innerText =
-                data.confidence.toFixed(2);
+                conf.toFixed(2);
 
               let badge = document.getElementById("badge_status");
 
@@ -169,6 +211,12 @@
               } else if (data.liveness === "Fake") {
                 badge.innerHTML = "⚠️ Wajah Palsu Terdeteksi";
                 badge.classList.add("warning");
+              } else if (
+                data.nama === "{{ nama }}" &&
+                data.liveness === "Real"
+              ) {
+                badge.innerHTML = "✓ Terverifikasi";
+                badge.classList.add("success");
               }
 
               // MONITORING  VC 
@@ -199,7 +247,7 @@
             .catch((err) => console.error("ERROR:", err));
         },
         "image/jpeg",
-        1.0, // 🔥 kualitas max
+        1.0,
       );
     }
   </script>
