@@ -3,13 +3,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Data Absensi - FaceAttend VC</title>
+
     <link rel="stylesheet" href="/static/style.css" />
+
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
     />
+
     <link rel="icon" href="/static/logo.png" type="image/png" />
   </head>
+
   <body class="admin-page">
     <div class="layout">
       <!-- SIDEBAR -->
@@ -26,12 +30,14 @@
               <span>Dashboard</span>
             </a>
           </li>
+
           <li>
             <a href="/data-peserta">
               <i class="fa fa-users"></i>
               <span>Data Peserta</span>
             </a>
           </li>
+
           <li class="active">
             <a href="/data-absensi">
               <i class="fa fa-calendar-check"></i>
@@ -42,6 +48,7 @@
 
         <div class="sidebar-footer">
           <p class="menu-title">PAGES</p>
+
           <a href="/logout" class="logout-link">
             <i class="fa fa-sign-out-alt"></i>
             <span>Logout</span>
@@ -54,33 +61,72 @@
         <!-- HEADER -->
         <header class="header">
           <div class="header-icons">
-            <i class="fa fa-sync-alt" title="Refresh Data" onclick="location.reload()"></i>
+            <i
+              class="fa fa-sync-alt"
+              title="Refresh Data"
+              onclick="location.reload()"
+            ></i>
           </div>
+
           <div class="profile-dropdown">
             <i class="fa fa-user"></i>
+
             <div class="dropdown-menu">
-              <p><strong>{{ session['nama'] }}</strong></p>
+              <p>
+                <strong>{{ session['nama'] }}</strong>
+              </p>
+
               <p>Administrator</p>
+
               <hr />
-              <p style="font-size: 11px; color: #718096;"><i class="fa fa-circle" style="color: #48bb78; font-size: 8px;"></i> Sesi Aktif</p>
+
+              <p style="font-size: 11px; color: #718096">
+                <i
+                  class="fa fa-circle"
+                  style="color: #48bb78; font-size: 8px"
+                ></i>
+
+                Sesi Aktif
+              </p>
             </div>
           </div>
         </header>
 
+        <!-- CONTENT -->
         <div class="content">
-          <!-- FILTER TANGGAL -->
+          <!-- FILTER -->
           <div class="card">
-            <h3><i class="fa fa-filter"></i> Filter Data</h3>
-            <form method="POST" style="display: flex; gap: 15px; align-items: center;">
-              <input type="date" name="tanggal" required />
-              <button type="submit" class="btn-submit"><i class="fa fa-search"></i> Cari Data</button>
+            <h3>
+              <i class="fa fa-filter"></i>
+              Filter Data
+            </h3>
+
+            <form
+              method="POST"
+              style="display: flex; gap: 15px; align-items: center"
+            >
+              <input
+                type="date"
+                name="tanggal"
+                value="{{ request.form.get('tanggal', '') }}"
+                required
+              />
+
+              <button type="submit" class="btn-submit">
+                <i class="fa fa-search"></i>
+                Cari Data
+              </button>
             </form>
           </div>
 
-          <!-- TABEL -->
+          <!-- TABEL ABSENSI -->
           <div class="card">
-            <h3><i class="fa fa-list"></i> Tabel Absensi</h3>
-            <div style="overflow-x: auto;">
+            <h3>
+              <i class="fa fa-list"></i>
+              Tabel Absensi
+            </h3>
+
+            <div style="overflow-x: auto">
               <table>
                 <thead>
                   <tr>
@@ -93,18 +139,46 @@
                     <th>Keterangan</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {% for d in data %}
+                  {% if data %} {% for d in data %}
+
                   <tr>
                     <td>{{ loop.index }}</td>
+
                     <td>{{ d.nim }}</td>
+
                     <td>{{ d.nama }}</td>
-                    <td>{{ d.waktu_masuk }}</td>
-                    <td>{{ d.waktu_keluar if d.waktu_keluar else '-' }}</td>
+
+                    <!-- FORMAT WAKTU MASUK -->
+                    <td>
+                      {% if d.waktu_masuk %} {{ d.waktu_masuk.strftime('%d-%m-%Y
+                      %H:%M:%S') }} {% else %} - {% endif %}
+                    </td>
+
+                    <!-- FORMAT WAKTU KELUAR -->
+                    <td>
+                      {% if d.waktu_keluar %} {{
+                      d.waktu_keluar.strftime('%d-%m-%Y %H:%M:%S') }} {% else %}
+                      - {% endif %}
+                    </td>
+
+                    <!-- STATUS -->
                     <td class="{{ d.status }}">{{ d.status }}</td>
+
+                    <!-- KETERANGAN -->
                     <td>{{ d.keterangan }}</td>
                   </tr>
-                  {% endfor %}
+
+                  {% endfor %} {% else %}
+
+                  <tr>
+                    <td colspan="7" style="text-align: center">
+                      Data absensi belum tersedia
+                    </td>
+                  </tr>
+
+                  {% endif %}
                 </tbody>
               </table>
             </div>

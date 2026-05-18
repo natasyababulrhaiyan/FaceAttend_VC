@@ -108,6 +108,7 @@ except Exception as e:
 @app.route('/recognize', methods=['POST'])
 @handle_errors("json")
 def recognize():
+    
 
     if face_model is None or le is None or detector is None:
 
@@ -193,7 +194,7 @@ def recognize():
     # resize sama seperti training
     face = cv2.resize(
         face,
-        (100, 100)
+        (128, 128)
     )
 
     # normalisasi
@@ -202,8 +203,8 @@ def recognize():
     # reshape RGB
     face = face.reshape(
         1,
-        100,
-        100,
+        128,
+        128,
         3
     )
 
@@ -320,44 +321,6 @@ def peserta():
         return "Akses ditolak!"
     return render_template('peserta.html', nama=session['nama'])
 
-# Catat Absen Masuk
-@app.route('/absen', methods=['POST'])
-@handle_errors("plain")
-def absen():
-    if 'role' not in session or session['role'] != 'peserta':
-        return "Akses ditolak!"
-
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO absensi (nim, nama, status, keterangan) VALUES (%s, %s, %s, %s)", 
-                   (session.get('nim'), session.get('nama'), request.form.get('status'), 
-                    request.form.get('keterangan', 'Terverifikasi')))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return "OK"
-
-
-# Rekap Data Absensi
-@app.route('/data-absensi', methods=['GET', 'POST'])
-@handle_errors("html")
-def data_absensi():
-    if 'role' not in session or session['role'] != 'admin':
-        return "Akses ditolak!"
-
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if request.method == 'POST':
-        cursor.execute("SELECT * FROM absensi WHERE DATE(waktu_masuk) = %s ORDER BY waktu_masuk DESC", 
-                       (request.form.get('tanggal'),))
-    else:
-        cursor.execute("SELECT * FROM absensi ORDER BY waktu_masuk DESC")
-    
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('data_absensi.html', data=data)
-
 # Kelola Peserta (Tambah/Edit/Hapus)
 @app.route('/tambah-peserta', methods=['POST'])
 @handle_errors("html")
@@ -399,26 +362,106 @@ def hapus_peserta(nim):
     conn.close()
     return redirect('/data-peserta')
 
+# Catat Absen Masuk
+@app.route('/absen', methods=['POST'])
+@handle_errors("plain")
+def absen():
+
+    if 'role' not in session or session['role'] != 'peserta':
+        return "Akses ditolak!"
+
+    nim = session.get('nim')
+    nama = session.get('nama')
+    status = request.form.get('status')
+    keterangan = request.form.get('keterangan', 'Real')
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+
+    # Cek apakah peserta masih aktif
+    cursor.execute("""
+        SELECT * FROM absensi
+        WHERE nim = %s
+        AND DATE(waktu_masuk) = CURDATE()
+        AND waktu_keluar IS NULL
+        LIMIT 1
+    """, (nim,))
+
+    existing = cursor.fetchone()
+
+    # Jika belum ada absensi aktif -> INSERT
+    if not existing:
+
+        insert_cursor = conn.cursor()
+
+        insert_cursor.execute("""
+            INSERT INTO absensi
+            (nim, nama, status, keterangan)
+            VALUES (%s, %s, %s, %s)
+        """, (nim, nama, status, keterangan))
+
+        conn.commit()
+
+        insert_cursor.close()
+
+    cursor.close()
+    conn.close()
+
+    return "OK"
+
+# Rekap Data Absensi
+@app.route('/data-absensi', methods=['GET', 'POST'])
+@handle_errors("html")
+def data_absensi():
+    if 'role' not in session or session['role'] != 'admin':
+        return "Akses ditolak!"
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if request.method == 'POST':
+        cursor.execute("SELECT * FROM absensi WHERE DATE(waktu_masuk) = %s ORDER BY waktu_masuk DESC", 
+                       (request.form.get('tanggal'),))
+    else:
+        cursor.execute("SELECT * FROM absensi ORDER BY waktu_masuk DESC")
+    
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('data_absensi.html', data=data)
+
 # Catat Waktu Keluar
 @app.route('/keluar', methods=['POST'])
 @handle_errors("plain")
 def keluar():
-    nim = session.get('nim')
-    if not nim: return "NIM tidak ditemukan"
 
-    status, ket = request.form.get('status'), request.form.get('keterangan')
+    nim = session.get('nim')
+
+    if not nim:
+        return "NIM tidak ditemukan"
+
+    status = request.form.get('status')
+    keterangan = request.form.get('keterangan')
+
     conn = get_db()
     cursor = conn.cursor()
-    if status and ket:
-        cursor.execute("UPDATE absensi SET waktu_keluar=CURRENT_TIMESTAMP, status=%s, keterangan=%s "
-                       "WHERE nim=%s AND waktu_keluar IS NULL ORDER BY waktu_masuk DESC LIMIT 1", 
-                       (status, ket, nim))
-    else:
-        cursor.execute("UPDATE absensi SET waktu_keluar=CURRENT_TIMESTAMP "
-                       "WHERE nim=%s AND waktu_keluar IS NULL ORDER BY waktu_masuk DESC LIMIT 1", (nim,))
+
+    cursor.execute("""
+        UPDATE absensi
+        SET 
+            waktu_keluar = CURRENT_TIMESTAMP,
+            status = %s,
+            keterangan = %s
+        WHERE nim = %s
+        AND waktu_keluar IS NULL
+        ORDER BY waktu_masuk DESC
+        LIMIT 1
+    """, (status, keterangan, nim))
+
     conn.commit()
+
     cursor.close()
     conn.close()
+
     return "OK"
 
 @app.route('/logout')
