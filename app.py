@@ -74,6 +74,8 @@ logger.info("Memuat model face recognition...")
 face_model = None
 le = None
 detector = None
+liveness_model = None
+le_liveness = None
 
 try:
 
@@ -93,6 +95,13 @@ try:
     # load MTCNN detector
     detector = MTCNN()
 
+    # load liveness model
+    liveness_model = load_model('liveness_model.keras')
+
+    # load liveness label encoder
+    with open('Label_encoder_liveness.pickle', 'rb') as f:
+        le_liveness = pickle.loads(f.read())
+
     logger.info("Model berhasil dimuat.")
 
 except Exception as e:
@@ -102,6 +111,8 @@ except Exception as e:
     face_model = None
     le = None
     detector = None
+    liveness_model = None
+    le_liveness = None
 
 # ================= FACE RECOGNITION =================
 
@@ -110,14 +121,13 @@ except Exception as e:
 def recognize():
     
 
-    if face_model is None or le is None or detector is None:
+    if face_model is None or le is None or detector is None or liveness_model is None or le_liveness is None:
 
         return jsonify({
             "error": "model_unavailable",
             "message": (
-                "Model pengenalan wajah tidak dapat dimuat. "
-                "Pastikan file model-cnn-facerecognition.h5 dan "
-                "model/label_encoder_cnn.pickle ada, lalu restart server."
+                "Model pengenalan wajah atau liveness tidak dapat dimuat. "
+                "Pastikan semua file model dan encoder tersedia, lalu restart server."
             ),
         }), 503
 
@@ -189,9 +199,11 @@ def recognize():
             "confidence": 0
         })
 
+    face_raw = face.copy()
+
     # ================= PREPROCESSING =================
 
-    # resize sama seperti training
+    # resize 
     face = cv2.resize(
         face,
         (128, 128)
@@ -228,23 +240,47 @@ def recognize():
 
         name = "Unknown"
 
-    # ================= SIMPLE LIVENESS =================
+    # ================= CNN LIVENESS =================
 
-    laplacian_var = cv2.Laplacian(
-        img,
-        cv2.CV_64F
-    ).var()
-
-    liveness = "Real" if laplacian_var > 100 else "Fake"
+    try:
+        if liveness_model is not None and le_liveness is not None:
+            # 1. CLAHE 
+            lab = cv2.cvtColor(face_raw, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            l_clahe = clahe.apply(l)
+            lab = cv2.merge((l_clahe, a, b))
+            face_liveness = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            
+            # 2. Resize and normalize
+            face_liveness = cv2.resize(face_liveness, (128, 128), interpolation=cv2.INTER_AREA)
+            face_liveness = face_liveness.astype("float32") / 255.0
+            face_liveness = np.expand_dims(face_liveness, axis=0)
+            
+            # 3. Predict
+            pred_liveness = liveness_model.predict(face_liveness, verbose=0)[0][0]
+            
+            # 4. Ambil label (0 untuk live, 1 untuk spoof)
+            idx_liveness = 0 if pred_liveness < 0.5 else 1
+            liveness_label = le_liveness.inverse_transform([idx_liveness])[0].lower()
+            
+            if liveness_label == 'live':
+                liveness = "Real"
+            else:
+                liveness = "Fake"
+        else:
+            # Fallback jika model gagal dimuat
+            laplacian_var = cv2.Laplacian(img, cv2.CV_64F).var()
+            liveness = "Real" if laplacian_var > 100 else "Fake"
+            
+    except Exception as e:
+        logger.error(f"Error pada liveness detection: {e}", exc_info=True)
+        liveness = "Unknown"
 
     return jsonify({
-
         "nama": name,
-
         "liveness": liveness,
-
         "confidence": confidence * 100
-
     })
 
 # Route Login
