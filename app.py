@@ -175,6 +175,9 @@ def recognize():
     # DETECT FACE USING MTCNN
     results = detector.detect_faces(rgb)
 
+    # filter confidence
+    results = [r for r in results if r['confidence'] >= 0.8]
+
     if len(results) == 0:
 
         return jsonify({
@@ -183,13 +186,52 @@ def recognize():
             "confidence": 0
         })
 
-    # AMBIL WAJAH PERTAMA
-    x, y, w, h = results[0]['box']
+    # AMBIL WAJAH TERBESAR
+    results = sorted(results, key=lambda x: x['box'][2] * x['box'][3], reverse=True)
+    result = results[0]
+
+    x, y, w, h = result['box']
+
+    if w <= 0 or h <= 0:
+
+        return jsonify({
+            "nama": "Invalid Face",
+            "liveness": "Unknown",
+            "confidence": 0
+        })
 
     x = max(0, x)
     y = max(0, y)
 
-    face = rgb[y:y+h, x:x+w]
+    # landmark
+    try:
+        keypoints = result['keypoints']
+        left_eye = keypoints['left_eye']
+        right_eye = keypoints['right_eye']
+
+        # sudut wajah
+        dx = right_eye[0] - left_eye[0]
+        dy = right_eye[1] - left_eye[1]
+        angle = np.degrees(np.arctan2(dy, dx))
+
+        # titik tengah mata
+        center = (int((left_eye[0] + right_eye[0]) / 2), int((left_eye[1] + right_eye[1]) / 2))
+
+        # rotate wajah
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        aligned = cv2.warpAffine(rgb, M, (rgb.shape[1], rgb.shape[0]))
+    except:
+        aligned = rgb
+
+    # padding wajah
+    pad = int(min(w, h) * 0.12)
+    x1 = max(0, x - pad)
+    y1 = max(0, y - pad)
+    x2 = min(aligned.shape[1], x + w + pad)
+    y2 = min(aligned.shape[0], y + h + pad)
+
+    # crop wajah
+    face = aligned[y1:y2, x1:x2]
 
     if face.size == 0:
 
@@ -203,10 +245,19 @@ def recognize():
 
     # ================= PREPROCESSING =================
 
-    # resize 
+    # CLAHE enhancement
+    lab = cv2.cvtColor(face, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    l = clahe.apply(l)
+    lab = cv2.merge((l, a, b))
+    face_enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+
+    # resize final
     face = cv2.resize(
-        face,
-        (128, 128)
+        face_enhanced,
+        (128, 128),
+        interpolation=cv2.INTER_AREA
     )
 
     # normalisasi
@@ -232,7 +283,7 @@ def recognize():
     confidence = float(preds[idx])
 
     # threshold
-    if confidence > 0.70:
+    if confidence > 0.85:
 
         name = le.classes_[idx]
 
