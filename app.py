@@ -1,3 +1,4 @@
+# import library
 from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for
 import mysql.connector
 from mysql.connector import pooling
@@ -10,16 +11,18 @@ from tensorflow.keras.models import load_model
 import pickle
 from mtcnn import MTCNN
 
+# Inisialisasi Flask
 app = Flask(__name__)
 app.secret_key = "secret123"
 
+# Konfigurasi Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger("faceattend")
 
-
+# Decorator untuk handle errors
 def handle_errors(response_type: str = "html"):
     """
     Tangkap exception di view, log traceback, kembalikan respons aman ke klien.
@@ -52,7 +55,7 @@ def handle_errors(response_type: str = "html"):
 
     return decorator
 
-# Konfigurasi Database Pool (Maksimal 20 koneksi simultan)
+# Koneksi Database 
 db_pool = pooling.MySQLConnectionPool(
     pool_name="faceattend_pool",
     pool_size=20,
@@ -67,43 +70,47 @@ def get_db():
     """Mengambil koneksi database dari pool."""
     return db_pool.get_connection()
 
-# ================= LOAD MODEL =================
+# LOAD MODEL Pada sistem
 
+# Logging
 logger.info("Memuat model face recognition...")
 
+# Variabel untuk menyimpan model
 face_model = None
 le = None
 detector = None
 liveness_model = None
 le_liveness = None
 
+# Try load model
 try:
 
-    # load CNN model
+    # load CNN model face recognition (hasil training)
     face_model = load_model(
         'best_model.keras'
     )
 
-    # load label encoder
+    # load label encoder face recognition
     with open(
-        'label_encoder_cnn_new.pickle',
+        'label_encoder_face.pickle',
         'rb'
     ) as f:
 
         le = pickle.loads(f.read())
 
-    # load MTCNN detector
+    # load face detection MTCNN
     detector = MTCNN()
 
-    # load liveness model
+    # load CNN model liveness detection (hasil training)
     liveness_model = load_model('liveness_model.keras')
 
-    # load liveness label encoder
+    # load label encoder liveness detection
     with open('Label_encoder_liveness.pickle', 'rb') as f:
         le_liveness = pickle.loads(f.read())
 
     logger.info("Model berhasil dimuat.")
 
+# Error
 except Exception as e:
 
     logger.error("Gagal memuat model: %s", e, exc_info=True)
@@ -114,7 +121,45 @@ except Exception as e:
     liveness_model = None
     le_liveness = None
 
-# ================= FACE RECOGNITION =================
+# INFERENCE CONFIG (samakan dgn pipeline training)
+IMG_SIZE = 128
+# Ambang keputusan acuan notebook: confidence >= 0.50 DAN margin top1-top2 >= 0.05
+RECOG_CONF_THRESHOLD = 0.50
+RECOG_DIFF_THRESHOLD = 0.05
+USE_TTA = True
+
+
+def _center_zoom(img01, factor=0.9):
+    """Crop tengah lalu resize balik ke IMG_SIZE. img01 dalam rentang [0,1]."""
+    h, w = img01.shape[:2]
+    nh, nw = int(h * factor), int(w * factor)
+    y0 = (h - nh) // 2
+    x0 = (w - nw) // 2
+    crop = img01[y0:y0 + nh, x0:x0 + nw]
+    return cv2.resize(crop, (IMG_SIZE, IMG_SIZE), interpolation=cv2.INTER_AREA)
+
+
+def predict_tta(model, face01):
+    """Test-Time Augmentation: rata-ratakan softmax dari beberapa varian input.
+
+    Varian: asli + flip horizontal + zoom-in 10%. Averaging menaikkan
+    confidence prediksi yang benar dan menurunkan yang salah (lebih stabil).
+    Sama dengan pipeline acuan di notebook training.
+    """
+    if not USE_TTA:
+        return model.predict(face01[None, ...], verbose=0)[0]
+
+    variants = [
+        face01,                       # asli
+        face01[:, ::-1, :],           # flip horizontal
+        _center_zoom(face01, 0.90),   # zoom-in 10%
+    ]
+    batch = np.stack(variants, axis=0).astype("float32")
+    preds = model.predict(batch, verbose=0)
+    return preds.mean(axis=0)
+
+
+# FACE RECOGNITION 
 
 @app.route('/recognize', methods=['POST'])
 @handle_errors("json")
@@ -243,7 +288,7 @@ def recognize():
 
     face_raw = face.copy()
 
-    # ================= PREPROCESSING =================
+    # PREPROCESSING
 
     # CLAHE enhancement
     lab = cv2.cvtColor(face, cv2.COLOR_RGB2LAB)
@@ -260,39 +305,29 @@ def recognize():
         interpolation=cv2.INTER_AREA
     )
 
-    # normalisasi
+    # normalisasi (face tetap 3D: 128x128x3, dipakai untuk TTA)
     face = face.astype("float32") / 255.0
 
-    # reshape RGB
-    face = face.reshape(
-        1,
-        128,
-        128,
-        3
-    )
+    # PREDICTION (TTA + threshold acuan training) 
 
-    # ================= PREDICTION =================
-
-    preds = face_model.predict(
-        face,
-        verbose=0
-    )[0]
+    preds = predict_tta(face_model, face)
 
     idx = int(np.argmax(preds))
-
     confidence = float(preds[idx])
-
-    # threshold
-    if confidence > 0.85:
-
-        name = le.classes_[idx]
-
+    # margin top1 - top2: tolak tebakan ragu antara 2 kelas mirip
+    if preds.shape[0] >= 2:
+        top2_conf = float(np.partition(preds, -2)[-2])
     else:
+        top2_conf = 0.0
+    diff = confidence - top2_conf
 
+    # Identifikasi nama peserta dengan label encoder
+    if confidence >= RECOG_CONF_THRESHOLD and diff >= RECOG_DIFF_THRESHOLD:
+        name = le.classes_[idx]  # Mengambil nama dari label encoder
+    else:
         name = "Unknown"
 
-    # ================= CNN LIVENESS =================
-
+    # LIVENESS
     try:
         if liveness_model is not None and le_liveness is not None:
             # 1. CLAHE 
@@ -334,14 +369,102 @@ def recognize():
         "confidence": confidence * 100
     })
 
-# Route Login
+def _normalize_name(name):
+    return " ".join(str(name).strip().split())
+
+
+def _find_user_by_nama(nama):
+    """Cari user peserta di DB berdasarkan nama (cocokkan dengan label model)."""
+    target = _normalize_name(nama).lower()
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT * FROM users WHERE role='peserta'"
+        )
+        for row in cursor.fetchall():
+            if _normalize_name(row["nama"]).lower() == target:
+                return row
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.route('/face-login', methods=['POST'])
+@handle_errors("json")
+def face_login():
+    """Login otomatis setelah wajah dikenali (1:N) + liveness lolos."""
+    if face_model is None or le is None or detector is None:
+        return jsonify({
+            "success": False,
+            "message": "Model pengenalan wajah tidak tersedia.",
+        }), 503
+
+    if 'image' not in request.files:
+        return jsonify({
+            "success": False,
+            "message": "Gambar wajah tidak ditemukan.",
+        }), 400
+
+    raw = request.files['image'].read()
+    if not raw:
+        return jsonify({
+            "success": False,
+            "message": "Gambar kosong — pastikan kamera aktif.",
+        }), 400
+
+    result = _analyze_face_bytes(raw)
+
+    nama = result.get("nama")
+    liveness = result.get("liveness")
+
+    if nama in (None, "Unknown", "No Face", "Invalid Face", "Invalid Image"):
+        return jsonify({
+            "success": False,
+            "message": "Wajah tidak dikenali. Dekatkan wajah ke kamera.",
+            "detail": result,
+        }), 401
+
+    if liveness != "Real":
+        return jsonify({
+            "success": False,
+            "message": "Wajah palsu terdeteksi. Gunakan wajah asli.",
+            "detail": result,
+        }), 401
+
+    user = _find_user_by_nama(nama)
+    if not user:
+        return jsonify({
+            "success": False,
+            "message": f"Pengguna '{nama}' tidak terdaftar di sistem.",
+            "detail": result,
+        }), 404
+
+    session['nim'] = user['nim']
+    session['nama'] = user['nama']
+    session['role'] = user['role']
+
+    return jsonify({
+        "success": True,
+        "message": f"Selamat datang, {user['nama']}!",
+        "nim": user['nim'],
+        "nama": user['nama'],
+        "redirect": "/peserta",
+        "confidence": result.get("confidence", 0),
+    })
+
+# LOGIN
 @app.route('/', methods=['GET', 'POST'])
 @handle_errors("html")
+
 def login():
     if request.method == 'POST':
+        # proses form login
         nim = request.form['nim']
         password = request.form['password']
 
+        # Cek user di database
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM users WHERE nim=%s AND password=%s", (nim, password))
@@ -349,78 +472,92 @@ def login():
         cursor.close()
         conn.close()
 
+        # Kondisi benar
         if user:
             session['nim'] = user['nim']
             session['nama'] = user['nama']
             session['role'] = user['role']
             return redirect('/admin' if user['role'] == 'admin' else '/peserta')
+        
+        # Menampilkan Pesan Gagal Login
         else:
             flash("Login gagal! Cek kembali NIM dan password.", "danger")
             return redirect('/')
 
-    return render_template('login.html')
+    return render_template('login.html')  # menampikan form login
 
-# Halaman Dashboard Admin
+# DASHBOARD ADMIN 
 @app.route('/admin')
 @handle_errors("html")
+# Menampilkan Dashboard Admin hasil dari login benar sebagai admin
 def admin():
     if 'role' not in session or session['role'] != 'admin':
-        return "Akses ditolak!"
+        flash("Anda harus login sebagai admin untuk mengakses halaman ini.", "danger")
+        return redirect('/')
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
+    # mengambil Data Absensi hari ini
     cursor.execute("SELECT * FROM absensi WHERE DATE(waktu_masuk) = CURDATE() ORDER BY waktu_masuk DESC")
     data = cursor.fetchall()
+    
+    hadir_count = 0
+    spoof_count = 0
+    live_count = 0
+    for d in data:
+        if d.get('status') == 'hadir':
+            hadir_count += 1
+            
+        ket = str(d.get('keterangan', '')).upper()
+        if 'SPOOF' in ket or d.get('status') == 'tidak_hadir':
+            spoof_count += 1
+        else:
+            live_count += 1
 
-    hadir_count = len([d for d in data if d.get('status') == 'hadir'])
-    spoof_count = len([d for d in data if d.get('status') == 'tidak_hadir'])
-
+    # mengambil jumlah total peserta dari tabel peserta (Data peserta)
     cursor.execute("SELECT COUNT(*) AS total FROM peserta")
     total_mahasiswa = cursor.fetchone()['total']
     
     cursor.close()
     conn.close()
-
+    # mengambil Data absensi dari Database
     return render_template('admin.html', data=data, total_mahasiswa=total_mahasiswa, 
-                           hadir_count=hadir_count, spoof_count=spoof_count)
+                           hadir_count=hadir_count, spoof_count=spoof_count, live_count=live_count)
 
-# Halaman Manajemen Peserta
+# Halaman Data Peserta
 @app.route('/data-peserta')
 @handle_errors("html")
 def data_peserta():
     if 'role' not in session or session['role'] != 'admin':
-        return "Akses ditolak!"
+        flash("Anda harus login sebagai admin untuk mengakses halaman ini.", "danger")
+        return redirect('/')
 
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
+    # mengambil Data Peserta
     cursor.execute("SELECT * FROM peserta")
     data = cursor.fetchall()
     cursor.close()
     conn.close()
-
+    # menampilkan Data Peserta
     return render_template('data_peserta.html', data=data)
 
-# Halaman Peserta & Video Conference
-@app.route('/peserta')
-@handle_errors("html")
-def peserta():
-    if 'role' not in session or session['role'] != 'peserta':
-        return "Akses ditolak!"
-    return render_template('peserta.html', nama=session['nama'])
-
-# Kelola Peserta (Tambah/Edit/Hapus)
+# Insert, Update dan Delete Data Peserta
 @app.route('/tambah-peserta', methods=['POST'])
 @handle_errors("html")
 def tambah_peserta():
     conn = get_db()
     cursor = conn.cursor()
+    # insert data ke tabel peserta
     cursor.execute("INSERT INTO peserta (nim, nama, password) VALUES (%s, %s, %s)", 
                    (request.form['nim'], request.form['nama'], request.form['password']))
+    # insert data ke tabel users
     cursor.execute("INSERT INTO users (nim, nama, password, role) VALUES (%s, %s, %s, 'peserta')", 
                    (request.form['nim'], request.form['nama'], request.form['password']))
     conn.commit()
     cursor.close()
     conn.close()
+    # mengembalikan ke halaman Data Peserta
     return redirect('/data-peserta')
 
 @app.route('/edit-peserta/<nim>', methods=['POST'])
@@ -428,13 +565,16 @@ def tambah_peserta():
 def edit_peserta(nim):
     conn = get_db()
     cursor = conn.cursor()
+    # update data di tabel peserta
     cursor.execute("UPDATE peserta SET nama=%s, password=%s WHERE nim=%s", 
                    (request.form['nama'], request.form['password'], nim))
+    # update data di tabel users
     cursor.execute("UPDATE users SET nama=%s, password=%s WHERE nim=%s", 
                    (request.form['nama'], request.form['password'], nim))
     conn.commit()
     cursor.close()
     conn.close()
+    # mengembalikan ke halaman Data Peserta
     return redirect('/data-peserta')
 
 @app.route('/hapus-peserta/<nim>')
@@ -442,12 +582,39 @@ def edit_peserta(nim):
 def hapus_peserta(nim):
     conn = get_db()
     cursor = conn.cursor()
+    # delete data di tabel peserta
     cursor.execute("DELETE FROM peserta WHERE nim=%s", (nim,))
+    # delete data di tabel users
     cursor.execute("DELETE FROM users WHERE nim=%s", (nim,))
     conn.commit()
     cursor.close()
     conn.close()
+    # mengembalikan ke halaman Data Peserta
     return redirect('/data-peserta')
+
+# Halaman Data Absensi
+@app.route('/data-absensi', methods=['GET', 'POST'])
+@handle_errors("html")
+def data_absensi():
+    if 'role' not in session or session['role'] != 'admin':
+        flash("Anda harus login sebagai admin untuk mengakses halaman ini.", "danger")
+        return redirect('/')
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    # menampilkan data berdasarkan tanggal yang dipilih
+    if request.method == 'POST':
+        cursor.execute("SELECT * FROM absensi WHERE DATE(waktu_masuk) = %s ORDER BY waktu_masuk DESC", 
+                       (request.form.get('tanggal'),))
+    # menampilkan semua data
+    else:
+        cursor.execute("SELECT * FROM absensi ORDER BY waktu_masuk DESC")
+    
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    # mengembalikan ke halaman Data Absensi
+    return render_template('data_absensi.html', data=data)
 
 # Catat Absen Masuk
 @app.route('/absen', methods=['POST'])
@@ -455,7 +622,7 @@ def hapus_peserta(nim):
 def absen():
 
     if 'role' not in session or session['role'] != 'peserta':
-        return "Akses ditolak!"
+        return "Unauthorized", 401
 
     nim = session.get('nim')
     nama = session.get('nama')
@@ -496,26 +663,6 @@ def absen():
 
     return "OK"
 
-# Rekap Data Absensi
-@app.route('/data-absensi', methods=['GET', 'POST'])
-@handle_errors("html")
-def data_absensi():
-    if 'role' not in session or session['role'] != 'admin':
-        return "Akses ditolak!"
-
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    if request.method == 'POST':
-        cursor.execute("SELECT * FROM absensi WHERE DATE(waktu_masuk) = %s ORDER BY waktu_masuk DESC", 
-                       (request.form.get('tanggal'),))
-    else:
-        cursor.execute("SELECT * FROM absensi ORDER BY waktu_masuk DESC")
-    
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return render_template('data_absensi.html', data=data)
-
 # Catat Waktu Keluar
 @app.route('/keluar', methods=['POST'])
 @handle_errors("plain")
@@ -551,10 +698,22 @@ def keluar():
 
     return "OK"
 
+# PESERTA 
+@app.route('/peserta')
+@handle_errors("html")
+# Menampilkan Halaman Peserta hasil dari login benar sebagai peserta
+def peserta():
+    if 'role' not in session or session['role'] != 'peserta':
+        flash("Anda harus login sebagai peserta untuk mengakses halaman ini.", "danger")
+        return redirect('/')
+    return render_template('peserta.html', nama=session['nama'])
+
+# LOGOUT
 @app.route('/logout')
 @handle_errors("html")
 def logout():
     session.clear()
+    # mengembalikan ke halaman login
     return redirect('/')
 
 # Jalankan Flask (Threaded agar support banyak user sekaligus)
