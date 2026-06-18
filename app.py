@@ -71,7 +71,6 @@ def get_db():
     return db_pool.get_connection()
 
 # LOAD MODEL Pada sistem
-
 # Logging
 logger.info("Memuat model face recognition...")
 
@@ -82,10 +81,9 @@ detector = None
 liveness_model = None
 le_liveness = None
 
-# Try load model
 try:
 
-    # load CNN model face recognition (hasil training)
+    # load CNN model face recognition (hasil training) 
     face_model = load_model(
         'best_model.keras'
     )
@@ -121,13 +119,16 @@ except Exception as e:
     liveness_model = None
     le_liveness = None
 
-# INFERENCE CONFIG (samakan dgn pipeline training)
+
+# INFERENCE CONFIG — selaras pipeline training (train_cnn_model2.ipynb)
 IMG_SIZE = 128
 # Ambang keputusan acuan notebook: confidence >= 0.50 DAN margin top1-top2 >= 0.05
 RECOG_CONF_THRESHOLD = 0.50
 RECOG_DIFF_THRESHOLD = 0.05
 USE_TTA = True
-
+# Ambang keputusan acuan notebook: confidence >= 0.80 DAN margin top1-top2 >= 0.15
+RECOG_CONF_THRESHOLD = 0.80
+RECOG_DIFF_THRESHOLD = 0.15
 
 def _center_zoom(img01, factor=0.9):
     """Crop tengah lalu resize balik ke IMG_SIZE. img01 dalam rentang [0,1]."""
@@ -158,14 +159,11 @@ def predict_tta(model, face01):
     preds = model.predict(batch, verbose=0)
     return preds.mean(axis=0)
 
-
 # FACE RECOGNITION 
-
 @app.route('/recognize', methods=['POST'])
 @handle_errors("json")
 def recognize():
     
-
     if face_model is None or le is None or detector is None or liveness_model is None or le_liveness is None:
 
         return jsonify({
@@ -288,7 +286,7 @@ def recognize():
 
     face_raw = face.copy()
 
-    # PREPROCESSING
+    # PREPROCESSING 
 
     # CLAHE enhancement
     lab = cv2.cvtColor(face, cv2.COLOR_RGB2LAB)
@@ -308,7 +306,7 @@ def recognize():
     # normalisasi (face tetap 3D: 128x128x3, dipakai untuk TTA)
     face = face.astype("float32") / 255.0
 
-    # PREDICTION (TTA + threshold acuan training) 
+    # PREDICTION (TTA + threshold acuan training)
 
     preds = predict_tta(face_model, face)
 
@@ -321,13 +319,14 @@ def recognize():
         top2_conf = 0.0
     diff = confidence - top2_conf
 
-    # Identifikasi nama peserta dengan label encoder
+    # keputusan: kenal hanya jika cukup yakin DAN cukup unggul dari kandidat kedua
     if confidence >= RECOG_CONF_THRESHOLD and diff >= RECOG_DIFF_THRESHOLD:
-        name = le.classes_[idx]  # Mengambil nama dari label encoder
+        name = le.classes_[idx]
     else:
         name = "Unknown"
 
-    # LIVENESS
+
+    # CNN LIVENESS 
     try:
         if liveness_model is not None and le_liveness is not None:
             # 1. CLAHE 
@@ -367,91 +366,6 @@ def recognize():
         "nama": name,
         "liveness": liveness,
         "confidence": confidence * 100
-    })
-
-def _normalize_name(name):
-    return " ".join(str(name).strip().split())
-
-
-def _find_user_by_nama(nama):
-    """Cari user peserta di DB berdasarkan nama (cocokkan dengan label model)."""
-    target = _normalize_name(nama).lower()
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(
-            "SELECT * FROM users WHERE role='peserta'"
-        )
-        for row in cursor.fetchall():
-            if _normalize_name(row["nama"]).lower() == target:
-                return row
-        return None
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@app.route('/face-login', methods=['POST'])
-@handle_errors("json")
-def face_login():
-    """Login otomatis setelah wajah dikenali (1:N) + liveness lolos."""
-    if face_model is None or le is None or detector is None:
-        return jsonify({
-            "success": False,
-            "message": "Model pengenalan wajah tidak tersedia.",
-        }), 503
-
-    if 'image' not in request.files:
-        return jsonify({
-            "success": False,
-            "message": "Gambar wajah tidak ditemukan.",
-        }), 400
-
-    raw = request.files['image'].read()
-    if not raw:
-        return jsonify({
-            "success": False,
-            "message": "Gambar kosong — pastikan kamera aktif.",
-        }), 400
-
-    result = _analyze_face_bytes(raw)
-
-    nama = result.get("nama")
-    liveness = result.get("liveness")
-
-    if nama in (None, "Unknown", "No Face", "Invalid Face", "Invalid Image"):
-        return jsonify({
-            "success": False,
-            "message": "Wajah tidak dikenali. Dekatkan wajah ke kamera.",
-            "detail": result,
-        }), 401
-
-    if liveness != "Real":
-        return jsonify({
-            "success": False,
-            "message": "Wajah palsu terdeteksi. Gunakan wajah asli.",
-            "detail": result,
-        }), 401
-
-    user = _find_user_by_nama(nama)
-    if not user:
-        return jsonify({
-            "success": False,
-            "message": f"Pengguna '{nama}' tidak terdaftar di sistem.",
-            "detail": result,
-        }), 404
-
-    session['nim'] = user['nim']
-    session['nama'] = user['nama']
-    session['role'] = user['role']
-
-    return jsonify({
-        "success": True,
-        "message": f"Selamat datang, {user['nama']}!",
-        "nim": user['nim'],
-        "nama": user['nama'],
-        "redirect": "/peserta",
-        "confidence": result.get("confidence", 0),
     })
 
 # LOGIN
