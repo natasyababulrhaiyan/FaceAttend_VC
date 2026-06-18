@@ -81,7 +81,7 @@
 
           <!-- TABEL -->
           <div class="card">
-            <h3><i class="fa fa-list"></i> Daftar Peserta</h3>
+            <h3><i class="fa fa-list"></i> Data Peserta</h3>
             <div style="overflow-x: auto;">
               <table>
                 <thead>
@@ -103,6 +103,7 @@
                       <button class="btn-icon edit" onclick="openEditModal('{{ d.nim }}', '{{ d.nama }}')">
                         <i class="fa fa-pen"></i>
                       </button>
+                      <!-- Tombol Hapus -->
                       <a href="/hapus-peserta/{{ d.nim }}" class="btn-icon delete" onclick="return confirm('Yakin hapus data ini?');">
                         <i class="fa fa-trash"></i>
                       </a>
@@ -113,6 +114,7 @@
               </table>
             </div>
           </div>
+
     <!-- MODAL EDIT PESERTA -->
     <div id="editModal" class="modal">
       <div class="modal-content card">

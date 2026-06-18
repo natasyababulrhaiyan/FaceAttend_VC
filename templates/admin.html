@@ -60,12 +60,14 @@
         <!-- HEADER -->
         <header class="header">
           <div class="header-icons">
+            <!--Tombol refresh data -->
             <i class="fa fa-sync-alt" title="Refresh Data" onclick="location.reload()"></i>
           </div>
 
           <!-- PROFILE -->
           <div class="profile-dropdown">
             <i class="fa fa-user"></i>
+            <!-- Menampilkan nama admin dari session dan status "Sesi Aktif" -->
             <div class="dropdown-menu">
               <p><strong>{{ session['nama'] }}</strong></p>
               <p>Administrator</p>
@@ -148,8 +150,8 @@
       const api = new JitsiMeetExternalAPI(domain, options);
 
       // CHART CONFIG
-      const hadir = {{ hadir_count | default(0) }};
-      const spoof = {{ spoof_count | default(0) }};
+      const hadir = parseInt("{{ live_count | default(0) }}", 10);
+      const spoof = parseInt("{{ spoof_count | default(0) }}", 10);
 
       const ctx = document.getElementById('chartAbsensi');
       if (ctx) {

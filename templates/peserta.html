@@ -1,296 +1,321 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FaceAttend VC</title>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceAttend VC</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="icon" href="/static/logo.png" type="image/png" />
+</head>
 
-    <link rel="stylesheet" href="/static/style.css" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-    />
-    <link rel="icon" href="/static/logo.png" type="image/png" />
-  </head>
+<body class="peserta-page">
+  <!-- HEADER -->
+  <div class="header-peserta">
+    <h2>Halo, {{ nama }} !!</h2>
+    <a href="/logout" class="logout-btn">
+      <i class="fa fa-sign-out-alt"></i> Logout
+    </a>
+  </div>
 
-  <body class="peserta-page">
-    <!-- HEADER -->
-    <div class="header-peserta">
-      <h2>Halo, {{ nama }} !!</h2>
-      <a href="/logout" class="logout-btn">
-        <i class="fa fa-sign-out-alt"></i> Logout
-      </a>
+  <div class="container-peserta">
+    <!-- INFO -->
+    <div class="info-peserta">
+      <h3><i class="fa fa-video"></i> FaceAttend VC</h3>
+      <p>Silakan ikuti kelas dan absensi akan dilakukan otomatis.</p>
     </div>
 
-    <div class="container-peserta">
-      <!-- INFO -->
-      <div class="info-peserta">
-        <h3><i class="fa fa-video"></i> FaceAttend VC</h3>
-        <p>Silakan ikuti kelas dan absensi akan dilakukan otomatis.</p>
-      </div>
-
-      <!-- VIDEO JITSI -->
-      <div class="video-card">
-        <div id="meet"></div>
-      </div>
-
-      <!-- STATUS -->
-      <div class="status-card">
-        <div class="status-header">
-          <i class="fa fa-user-check"></i>
-          <h3>Status Absensi</h3>
-        </div>
-
-        <div class="status-content">
-          <div class="status-row">
-            <i class="fa fa-user"></i>
-            <span>Nama</span>
-            <strong id="nama_status">-</strong>
-          </div>
-
-          <div class="status-row">
-            <i class="fa fa-eye"></i>
-            <span>Liveness</span>
-            <strong id="liveness_status">-</strong>
-          </div>
-
-          <div class="status-row">
-            <i class="fa fa-percent"></i>
-            <span>Confidence</span>
-            <strong id="confidence_status">-</strong>
-          </div>
-        </div>
-
-        <!-- AREA BADGE STATUS (Dihasilkan via JS) -->
-        <div id="badge_status"></div>
-      </div>
-
-      <!-- KAMERA (HIDDEN UNTUK SCAN) -->
-      <video
-        id="video"
-        autoplay
-        playsinline
-        muted
-        style="display: none"
-      ></video>
-      <canvas id="canvas" style="display: none"></canvas>
+    <!-- VIDEO JITSI -->
+    <div class="video-card">
+      <div id="meet"></div>
     </div>
 
-    <!-- JITSI -->
-    <script src="https://meet.jit.si/external_api.js"></script>
+    <!-- STATUS -->
+    <div class="status-card">
+      <div class="status-header">
+        <i class="fa fa-user-check"></i>
+        <h3>Status Absensi</h3>
+      </div>
 
-    <script>
-      const domain = "meet.jit.si";
+      <div class="status-content">
+        <div class="status-row">
+          <i class="fa fa-user"></i>
+          <span>Nama</span>
+          <strong id="nama_status">-</strong>
+        </div>
 
-      const options = {
-        roomName: "FaceAttend VC",
-        width: "100%",
-        height: 500,
-        parentNode: document.querySelector("#meet"),
+        <div class="status-row">
+          <i class="fa fa-eye"></i>
+          <span>Liveness</span>
+          <strong id="liveness_status">-</strong>
+        </div>
 
-        userInfo: {
-          displayName: "{{ nama }}",
+        <div class="status-row">
+          <i class="fa fa-percent"></i>
+          <span>Confidence</span>
+          <strong id="confidence_status">-</strong>
+        </div>
+      </div>
+
+      <!-- AREA BADGE STATUS -->
+      <div id="badge_status"></div>
+    </div>
+
+    <!-- KAMERA -->
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+    <canvas id="canvas" style="display: none"></canvas>
+  </div>
+
+  <!-- JITSI -->
+  <script src="https://meet.jit.si/external_api.js"></script>
+
+  <script>
+    const domain = "meet.jit.si";
+
+    const options = {
+      roomName: "FaceAttend VC",
+      width: "100%",
+      height: 500,
+      parentNode: document.querySelector("#meet"),
+
+      userInfo: {
+        displayName: "{{ nama }}",
+      },
+    };
+
+    const api = new JitsiMeetExternalAPI(domain, options);
+
+    // FUNGSI UNTUK MENGIRIM REKAP ABSENSI AKHIR
+    function kirimRekapAbsensi() {
+      if (!sudahDikenali) return;
+
+      // Tentukan hasil akhir 
+      // Jika terdapat deteksi Fake yang signifikan, tandai sebagai Spoof
+      let finalStatus = fakeCount > realCount ? "tidak_hadir" : "hadir";
+      let finalKet =
+        fakeCount > 0
+          ? `SPOOF - Wajah Palsu (${fakeCount} times)`
+          : "LIVE - Wajah Asli";
+
+      let formData = new URLSearchParams();
+      formData.append("status", finalStatus);
+      formData.append("keterangan", finalKet);
+
+      // Gunakan Beacon agar data tetap terkirim meski tab ditutup paksa
+      navigator.sendBeacon("/keluar", formData);
+    }
+
+    // KIRIM REKAP SAAT JITSI DITUTUP
+    api.addEventListener("videoConferenceLeft", () => {
+      kirimRekapAbsensi();
+    });
+
+    // BACKUP: KIRIM SAAT TAB/BROWSER DITUTUP
+    window.addEventListener("beforeunload", () => {
+      kirimRekapAbsensi();
+    });
+  </script>
+
+  <!-- AUTO FACE RECOGNITION -->
+  <script>
+    const video = document.getElementById("video");
+
+    // AKTIFKAN KAMERA — minta resolusi HD agar wajah lebih tajam
+    navigator.mediaDevices
+      .getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
         },
-      };
+      })
+      .then((stream) => {
+        video.srcObject = stream;
+      })
+      .catch((err) => {
+        console.error(err);
+        const badge = document.getElementById("badge_status");
+        badge.className = "badge-status danger";
+        badge.innerHTML =
+          "Tidak dapat mengakses kamera. Izinkan kamera di browser.";
+      });
 
-      const api = new JitsiMeetExternalAPI(domain, options);
+    // ================= Capture Frame Wajah =================
+    setInterval(() => {
+      capture();
+    }, 5000); // tiap 5 detik
 
-      // FUNGSI UNTUK MENGIRIM REKAP ABSENSI AKHIR
-      function kirimRekapAbsensi() {
-        if (!sudahDikenali) return;
+    let sudahDikenali = false;
+    let realCount = 0;
+    let fakeCount = 0;
+    let totalScans = 0;
 
-        // Tentukan hasil akhir berdasarkan akumulasi scanning
-        // Jika terdapat deteksi Fake yang signifikan, tandai sebagai Spoof
-        let finalStatus = fakeCount > realCount ? "tidak_hadir" : "hadir";
-        let finalKet =
-          fakeCount > 0
-            ? `Terverifikasi Spoof (${fakeCount} times)`
-            : "Terverifikasi Live";
+    // Voting multi-frame: butuh dikenali (nama benar + Real) beberapa kali
+    // berturut-turut sebelum verifikasi dianggap sah. Mengurangi salah kenal
+    // sesaat akibat 1 frame buram/pencahayaan jelek.
+    let verifyStreak = 0;
+    const VERIFY_NEEDED = 2;
 
-        let formData = new URLSearchParams();
-        formData.append("status", finalStatus);
-        formData.append("keterangan", finalKet);
-
-        // Gunakan Beacon agar data tetap terkirim meski tab ditutup paksa
-        navigator.sendBeacon("/keluar", formData);
+    function capture() {
+      if (!video.srcObject || video.readyState < 2 || !video.videoWidth) {
+        return;
       }
 
-      // KIRIM REKAP SAAT JITSI DITUTUP
-      api.addEventListener("videoConferenceLeft", () => {
-        kirimRekapAbsensi();
-      });
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
 
-      // BACKUP: KIRIM SAAT TAB/BROWSER DITUTUP
-      window.addEventListener("beforeunload", () => {
-        kirimRekapAbsensi();
-      });
-    </script>
+      // Pertahankan aspek rasio asli kamera (jangan dipaksa persegi)
+      // agar wajah tidak gepeng/melar saat sampai ke server.
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const maxSide = 1280;
+      let cw = vw;
+      let ch = vh;
+      if (Math.max(vw, vh) > maxSide) {
+        const scale = maxSide / Math.max(vw, vh);
+        cw = Math.round(vw * scale);
+        ch = Math.round(vh * scale);
+      }
 
-    <!-- AUTO FACE RECOGNITION -->
-    <script>
-      const video = document.getElementById("video");
+      canvas.width = cw;
+      canvas.height = ch;
 
-      // AKTIFKAN KAMERA (UNTUK SCAN)
-      navigator.mediaDevices
-        .getUserMedia({ video: true })
-        .then((stream) => {
-          video.srcObject = stream;
-        })
-        .catch((err) => {
-          console.error(err);
-          const badge = document.getElementById("badge_status");
-          badge.className = "badge-status danger";
-          badge.innerHTML =
-            "Tidak dapat mengakses kamera. Izinkan kamera di browser.";
-        });
+      ctx.drawImage(video, 0, 0, cw, ch);
 
-      // ================= AUTO SCAN =================
-      setInterval(() => {
-        capture();
-      }, 5000); // tiap 5 detik
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size === 0) {
+            return;
+          }
 
-      let sudahDikenali = false;
-      let realCount = 0;
-      let fakeCount = 0;
-      let totalScans = 0;
+          let formData = new FormData();
+          formData.append("image", blob, "frame.jpg");
 
-      function capture() {
-        if (!video.srcObject || video.readyState < 2 || !video.videoWidth) {
-          return;
-        }
+          fetch("/recognize", {
+            method: "POST",
+            body: formData,
+          })
+            .then(async (res) => {
+              const data = await res.json();
 
-        const canvas = document.getElementById("canvas");
-        const ctx = canvas.getContext("2d");
+              if (!res.ok) {
+                const msg =
+                  data.message ||
+                  data.error ||
+                  "Gagal memproses pengenalan wajah.";
+                console.warn("/recognize", res.status, data);
+                document.getElementById("nama_status").innerText = "—";
+                document.getElementById("liveness_status").innerText = "—";
+                document.getElementById("confidence_status").innerText = "—";
 
-        canvas.width = 320;
-        canvas.height = 320;
+                const badge = document.getElementById("badge_status");
+                badge.className = "badge-status danger";
+                badge.innerHTML = "⚠️ " + msg;
+                return;
+              }
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              console.log(data);
 
-        canvas.toBlob(
-          (blob) => {
-            if (!blob || blob.size === 0) {
-              return;
-            }
+              const conf =
+                typeof data.confidence === "number"
+                  ? data.confidence
+                  : Number(data.confidence) || 0;
 
-            let formData = new FormData();
-            formData.append("image", blob, "frame.jpg");
+              // ================= UPDATE UI =================
+              document.getElementById("nama_status").innerText =
+                data.nama ?? "—";
+              document.getElementById("liveness_status").innerText =
+                data.liveness ?? "—";
+              document.getElementById("confidence_status").innerText =
+                conf.toFixed(2);
 
-            fetch("/recognize", {
-              method: "POST",
-              body: formData,
+              let badge = document.getElementById("badge_status");
+
+              badge.className = "badge-status";
+
+              // ================= LOGIKA STATUS =================
+              if (data.nama === "Unknown") {
+                badge.innerHTML = "❌ Wajah Tidak Dikenali";
+                badge.classList.add("danger");
+              } else if (data.liveness === "Fake") {
+                badge.innerHTML = "⚠️ Wajah Palsu Terdeteksi";
+                badge.classList.add("warning");
+              } else if (
+                data.nama === "{{ nama }}" &&
+                data.liveness === "Real"
+              ) {
+                badge.innerHTML = "✓ Terverifikasi";
+                badge.classList.add("success");
+              }
+
+              // MONITORING  VC
+              // Voting: hitung berapa kali berturut-turut wajah peserta
+              // (nama benar + Real) terdeteksi. Reset jika meleset.
+              if (data.nama === "{{ nama }}" && data.liveness === "Real") {
+                verifyStreak++;
+              } else {
+                verifyStreak = 0;
+              }
+
+              // Verifikasi sah hanya setelah lolos voting beberapa frame
+              if (!sudahDikenali && verifyStreak >= VERIFY_NEEDED) {
+                console.log(
+                  "Peserta terverifikasi (voting), mulai monitoring liveness...",
+                );
+                sudahDikenali = true;
+                fetch("/absen", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                  },
+                  body:
+                    "status=hadir&keterangan=" +
+                    encodeURIComponent("Verified Live (voting)"),
+                });
+              }
+
+              // Akumulasi hasil liveness selama Jitsi berlangsung
+              // (hanya saat wajah yang terdeteksi adalah peserta login)
+              if (data.nama === "{{ nama }}") {
+                totalScans++;
+                if (data.liveness === "Real") {
+                  realCount++;
+                } else {
+                  fakeCount++;
+                }
+
+                console.log(
+                  `Monitoring: Real(${realCount}) | Fake(${fakeCount}) | streak(${verifyStreak})`,
+                );
+              }
             })
-              .then(async (res) => {
-                const data = await res.json();
+            .catch((err) => console.error("ERROR:", err));
+        },
+        "image/jpeg",
+        1.0,
+      );
+    }
+  </script>
+  <script>
+    let lastStatus = "hadir";
+    let lastKeterangan = "Real";
 
-                if (!res.ok) {
-                  const msg =
-                    data.message ||
-                    data.error ||
-                    "Gagal memproses pengenalan wajah.";
-                  console.warn("/recognize", res.status, data);
-                  document.getElementById("nama_status").innerText = "—";
-                  document.getElementById("liveness_status").innerText = "—";
-                  document.getElementById("confidence_status").innerText = "—";
+    // contoh update dari hasil CNN/liveness
+    function updateLiveness(status, ket) {
+      lastStatus = status;
+      lastKeterangan = ket;
+    }
 
-                  const badge = document.getElementById("badge_status");
-                  badge.className = "badge-status danger";
-                  badge.innerHTML = "⚠️ " + msg;
-                  return;
-                }
+    // saat keluar halaman
+    window.addEventListener("beforeunload", function () {
+      const formData = new FormData();
 
-                console.log(data);
+      formData.append("status", lastStatus);
+      formData.append("keterangan", lastKeterangan);
 
-                const conf =
-                  typeof data.confidence === "number"
-                    ? data.confidence
-                    : Number(data.confidence) || 0;
+      navigator.sendBeacon("/keluar", formData);
+    });
+  </script>
+</body>
 
-                // ================= UPDATE UI =================
-                document.getElementById("nama_status").innerText =
-                  data.nama ?? "—";
-                document.getElementById("liveness_status").innerText =
-                  data.liveness ?? "—";
-                document.getElementById("confidence_status").innerText =
-                  conf.toFixed(2);
-
-                let badge = document.getElementById("badge_status");
-
-                badge.className = "badge-status";
-
-                // ================= LOGIKA STATUS =================
-                if (data.nama === "Unknown") {
-                  badge.innerHTML = "❌ Wajah Tidak Dikenali";
-                  badge.classList.add("danger");
-                } else if (data.liveness === "Fake") {
-                  badge.innerHTML = "⚠️ Wajah Palsu Terdeteksi";
-                  badge.classList.add("warning");
-                } else if (
-                  data.nama === "{{ nama }}" &&
-                  data.liveness === "Real"
-                ) {
-                  badge.innerHTML = "✓ Terverifikasi";
-                  badge.classList.add("success");
-                }
-
-                // MONITORING  VC
-                // Cek apakah ini benar peserta yang login
-                if (data.nama === "{{ nama }}") {
-                  if (!sudahDikenali) {
-                    console.log(
-                      "Peserta terverifikasi, mulai monitoring liveness...",
-                    );
-                    sudahDikenali = true;
-                    const live = data.liveness ?? "Unknown";
-                    fetch("/absen", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/x-www-form-urlencoded",
-                      },
-                      body:
-                        "status=hadir&keterangan=" + encodeURIComponent(live),
-                    });
-                  }
-
-                  // Akumulasi hasil liveness selama Jitsi berlangsung
-                  totalScans++;
-                  if (data.liveness === "Real") {
-                    realCount++;
-                  } else {
-                    fakeCount++;
-                  }
-
-                  console.log(
-                    `Monitoring: Real(${realCount}) | Fake(${fakeCount})`,
-                  );
-                }
-              })
-              .catch((err) => console.error("ERROR:", err));
-          },
-          "image/jpeg",
-          1.0,
-        );
-      }
-    </script>
-    <script>
-      let lastStatus = "hadir";
-      let lastKeterangan = "Real";
-
-      // contoh update dari hasil CNN/liveness
-      function updateLiveness(status, ket) {
-        lastStatus = status;
-        lastKeterangan = ket;
-      }
-
-      // saat keluar halaman
-      window.addEventListener("beforeunload", function () {
-        const formData = new FormData();
-
-        formData.append("status", lastStatus);
-        formData.append("keterangan", lastKeterangan);
-
-        navigator.sendBeacon("/keluar", formData);
-      });
-    </script>
-  </body>
 </html>

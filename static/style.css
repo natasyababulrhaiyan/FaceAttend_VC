@@ -4,6 +4,12 @@
    ========================================================================== */
 
 
+html, body {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -299,8 +305,6 @@
     flex-direction: column;
     padding: 30px 20px;
     border-right: 1px solid rgba(255, 255, 255, 0.15);
-    position: fixed;
-    height: 100vh;
     z-index: 1000;
 }
 
@@ -356,6 +360,8 @@
 
 .menu li i {
     font-size: 18px;
+    width: 24px;
+    text-align: center;
 }
 
 .menu li:hover a {
@@ -404,7 +410,6 @@
 /* MAIN CONTENT */
 .main {
     flex: 1;
-    margin-left: 260px;
     display: flex;
     flex-direction: column;
 }
