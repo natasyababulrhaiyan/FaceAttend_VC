@@ -1,4 +1,7 @@
 # import library
+import os
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
+
 from flask import Flask, render_template, request, redirect, session, jsonify, flash, url_for
 import mysql.connector
 from mysql.connector import pooling
@@ -24,10 +27,6 @@ logger = logging.getLogger("faceattend")
 
 # Decorator untuk handle errors
 def handle_errors(response_type: str = "html"):
-    """
-    Tangkap exception di view, log traceback, kembalikan respons aman ke klien.
-    response_type: 'json' | 'plain' | 'html'
-    """
 
     def decorator(view_func):
         @wraps(view_func)
@@ -273,11 +272,17 @@ def recognize():
     x2 = min(aligned.shape[1], x + w + pad)
     y2 = min(aligned.shape[0], y + h + pad)
 
+    if x2 <= x1 or y2 <= y1:
+        return jsonify({
+            "nama": "Invalid Face",
+            "liveness": "Unknown",
+            "confidence": 0
+        })
+
     # crop wajah
     face = aligned[y1:y2, x1:x2]
 
-    if face.size == 0:
-
+    if face is None or face.size == 0:
         return jsonify({
             "nama": "Invalid Face",
             "liveness": "Unknown",
@@ -285,6 +290,8 @@ def recognize():
         })
 
     face_raw = face.copy()
+    logger.info(f"Face shape: {face.shape}")
+    logger.info(f"Face raw shape: {face_raw.shape}")
 
     # PREPROCESSING 
 

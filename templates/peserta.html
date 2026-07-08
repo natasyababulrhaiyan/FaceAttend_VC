@@ -88,13 +88,13 @@
     // FUNGSI UNTUK MENGIRIM REKAP ABSENSI AKHIR
     function kirimRekapAbsensi() {
       if (!sudahDikenali) return;
+      
+      let finalStatus = "hadir";
 
       // Tentukan hasil akhir 
-      // Jika terdapat deteksi Fake yang signifikan, tandai sebagai Spoof
-      let finalStatus = fakeCount > realCount ? "tidak_hadir" : "hadir";
       let finalKet =
         fakeCount > 0
-          ? `SPOOF - Wajah Palsu (${fakeCount} times)`
+          ? `SPOOF - Wajah Palsu`
           : "LIVE - Wajah Asli";
 
       let formData = new URLSearchParams();
@@ -251,7 +251,7 @@
               // MONITORING  VC
               // Voting: hitung berapa kali berturut-turut wajah peserta
               // (nama benar + Real) terdeteksi. Reset jika meleset.
-              if (data.nama === "{{ nama }}" && data.liveness === "Real") {
+              if (data.nama === "{{ nama }}" ) {
                 verifyStreak++;
               } else {
                 verifyStreak = 0;
