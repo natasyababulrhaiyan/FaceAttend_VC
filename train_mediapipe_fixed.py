@@ -163,12 +163,8 @@ def main():
     # Compute centroids & thresholds
     print("[INFO] Menghitung centroid embedding untuk unknown detection...")
     train_emb = embedding_model.predict(x_train, verbose=0)
-    test_emb = embedding_model.predict(x_test, verbose=0)
-
     centroids, thresholds = compute_centroids_and_thresholds(
-        train_emb, y_train_enc, num_classes,
-        percentile=95, slack=1.3,
-        val_embeddings=test_emb, val_labels=y_test_enc
+        train_emb, y_train_enc, num_classes, percentile=95
     )
     np.save("face_centroids.npy", centroids)
     np.save("face_thresholds.npy", thresholds)

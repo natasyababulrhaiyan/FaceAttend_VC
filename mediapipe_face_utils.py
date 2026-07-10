@@ -143,15 +143,9 @@ def build_model(input_shape=(468, 3), num_classes=20):
 
 
 def compute_centroids_and_thresholds(embeddings, labels, num_classes,
-                                     percentile=95, slack=1.3,
-                                     val_embeddings=None, val_labels=None):
+                                     percentile=95):
     """
     Hitung centroid embedding tiap kelas dan threshold rejection.
-
-    Jika `val_embeddings` diberikan, threshold dihitung dari jarak sample
-    validasi ke centroid kelasnya (lebih realistis untuk unseen data/webcam).
-    `slack` mengalikan threshold sehingga wajah asli jarang tertolak,
-    sambil tetap menolak wajah yang benar-benar asing.
 
     Returns:
         centroids: (num_classes, emb_dim)
@@ -162,17 +156,10 @@ def compute_centroids_and_thresholds(embeddings, labels, num_classes,
     thresholds = np.zeros(num_classes, dtype=np.float32)
 
     for i in range(num_classes):
-        train_mask = labels == i
-        train_emb = embeddings[train_mask]
-        centroids[i] = train_emb.mean(axis=0)
-
-        if (val_embeddings is not None and val_labels is not None
-                and np.any(val_labels == i)):
-            val_mask = val_labels == i
-            dists = np.linalg.norm(val_embeddings[val_mask] - centroids[i], axis=1)
-        else:
-            dists = np.linalg.norm(train_emb - centroids[i], axis=1)
-
-        thresholds[i] = np.percentile(dists, percentile) * slack
+        mask = labels == i
+        cls_emb = embeddings[mask]
+        centroids[i] = cls_emb.mean(axis=0)
+        dists = np.linalg.norm(cls_emb - centroids[i], axis=1)
+        thresholds[i] = np.percentile(dists, percentile)
 
     return centroids, thresholds
